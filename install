@@ -263,12 +263,12 @@ dir=${prefix}/${exec}
 }
 
 [[ -e "$dir" ]] && {
-	read -r -p "Install directory $dir already exists."\
-				" Delete it before proceding? (yes,NO): " confirm
+	msg="Install directory $dir already exists. Delete it before proceding?"
+	read -r -p "$msg (yes,NO): " confirm
 	case "$confirm" in
 	[Yy]*) message "removing $dir" ;
-		   $sudo rm -rf "$dir" || fatal "could not remove $dir" ;;
-		*) quit
+	       $sudo rm -rf "$dir" || fatal "could not remove $dir" ;;
+	    *) quit
 	esac
 }
 
@@ -290,14 +290,14 @@ $sudo tar -xzf "$tarball" --strip-components=1 --directory "$dir" ||
 
 ((system)) && {
 	message "adjusting ownership and permitions in $dir"
-	sudo chown -R "${owner}:" "$dir"
-		|| fatal "could not set owner of $dir to $owner"
-	sudo chmod -R g+w "$dir"
-		|| fatal "could not set permitions $dir to g+w"
+	sudo chown -R "${owner}:" "$dir" ||
+		fatal "could not set owner of $dir to $owner"
+	sudo chmod -R g+w "$dir" ||
+		fatal "could not set permitions $dir to g+w"
 
 	message "including your user $USER to $owner group"
-	sudo usermod --append --groups "$owner" "$USER"
-		|| fatal "could not add $USER user to $owner group"
+	sudo usermod --append --groups "$owner" "$USER" ||
+		fatal "could not add $USER user to $owner group"
 }
 
 message "creating executable at $execdir/$exec"
@@ -315,14 +315,14 @@ $sudo mkdir -p${v} "$execdir"
 	SMARTGIT_MAX_HEAP_SIZE=\${SMARTGIT_MAX_HEAP_SIZE:-256m}
 
 	if [[ "\$SMARTGIT_JAVA_HOME" ]] ; then
-		_JAVA_EXEC="\$SMARTGIT_JAVA_HOME/bin/java"
+	    _JAVA_EXEC="\$SMARTGIT_JAVA_HOME/bin/java"
 	else
-		_JAVA_EXEC="java"
+	    _JAVA_EXEC="java"
 	fi
 
 	type -p "\$_JAVA_EXEC" >/dev/null || {
-		echo "Error: No java environment found"
-		exit 1
+	    echo "Error: No java environment found"
+	    exit 1
 	}
 
 	_VM_PROPERTIES="-Dsun.io.useCanonCaches=false"
@@ -330,30 +330,30 @@ $sudo mkdir -p${v} "$execdir"
 	# -XX:-UseSSE42Intrinsics is used to work-around bug 6875866
 	# of Java 1.6.0_20 (and earlier) on Intel Nehalem CPUs, e.g. Core i7
 	\$_JAVA_EXEC -XX:-UseSSE42Intrinsics -version >/dev/null 2>&1 &&
-		_VM_PROPERTIES="\${_VM_PROPERTIES} -XX:-UseSSE42Intrinsics"
+	    _VM_PROPERTIES="\${_VM_PROPERTIES} -XX:-UseSSE42Intrinsics"
 
 	# Uncomment the following line to change the location where $name should
 	# store settings (the given example path will make $name portable by
 	# storing the settings in the installation directory):
-	#_VM_PROPERTIES+=" -Dsmartgit.settings=\\${smartgit.installation}/.smartgit"
+	#_VM_PROPERTIES+=" -Dsmartgit.settings=\\\${smartgit.installation}/.smartgit"
 
-	\$_JAVA_EXEC \$_VM_PROPERTIES -Xmx\${SMARTGIT_MAX_HEAP_SIZE} \
-		-Dsmartgit.vm-xmx=\${SMARTGIT_MAX_HEAP_SIZE} -Dmain-class=SmartGit \
-		-jar "$dir/lib/bootloader.jar" "\$@"
+	\$_JAVA_EXEC \$_VM_PROPERTIES -Xmx\${SMARTGIT_MAX_HEAP_SIZE} \\
+	    -Dsmartgit.vm-xmx=\${SMARTGIT_MAX_HEAP_SIZE} -Dmain-class=SmartGit \\
+	    -jar "$dir/lib/bootloader.jar" "\$@"
 EXEC
 
 message "installing icons"
-for icon in "$dir"/bin/*.png
+for icon in "$dir"/bin/*.png ; do
 	size=${icon##*-}
 	size=${size%%.*}
-	echo "icon=$icon, size=$size"
-	$sudo xdg-icon-resource install --noupdate --size "$size" "$icon" "$exec"
+	$sudo xdg-icon-resource install --noupdate --novendor --size "$size" \
+		"$icon" "$exec"
 done
 $sudo xdg-icon-resource forceupdate || fatal "could not install icons"
 
 message "installing desktop file"
-$sudo mkdir -p${v} "$appdir"
-	|| fatal "could not create desktop directory $appdir"
+$sudo mkdir -p${v} "$appdir" ||
+	fatal "could not create desktop directory $appdir"
 { $sudo dd of="$appdir/$exec.desktop" status=noxfer 2>/dev/null ||
   fatal "could not desktop entry $appdir/$exec.desktop" ; } <<-DESKTOP
 	[Desktop Entry]
@@ -361,6 +361,7 @@ $sudo mkdir -p${v} "$appdir"
 	Type=Application
 	Name=$name
 	GenericName=Git+Hg+SVN Client
+	Comment=Git+Hg+SVN Client
 	Categories=Development;RevisionControl;
 	StartupNotify=true
 	Icon=$exec
@@ -370,25 +371,25 @@ $sudo mkdir -p${v} "$appdir"
 DESKTOP
 
 ((system)) || (
+	addpath=1
 	IFS=:
 	for pathdir in $PATH ; do
-		[[ "$pathdir" = "$execdir" ]] && return
+		[[ "$pathdir" == "$execdir" ]] && { addpath=0 ; break ; }
 	done
 
-	relexecdir=${execdir#$HOME/}
-	message "adding ~/${relexecdir} to you \$PATH in ~/.profile"
-	cat >> "$HOME/.profile" <<-EOF
+	((addpath)) && {
+		relexecdir=${execdir#$HOME/}
+		message "adding ~/${relexecdir} to you \$PATH in ~/.profile"
+		cat >> "$HOME/.profile" <<-EOF
 
-	# Included by $name $label install
-	# set PATH so it includes user's ~/${relexecdir} if it exists
-	if [ -d "\$HOME/$relexecdir" ] ; then
-		PATH="\$HOME/$relexecdir:\$PATH"
-	fi
-	EOF
+		# Included by $name $label install
+		# set PATH so it includes user's ~/${relexecdir} if it exists
+		if [ -d "\$HOME/$relexecdir" ] ; then
+		    PATH="\$HOME/$relexecdir:\$PATH"
+		fi
+		EOF
+	}
 )
-
-message "Removing install cruft files"
-$sudo rm -rf "${dir}"
 
 message ""
 message "Succesfully installed ${name}!"
