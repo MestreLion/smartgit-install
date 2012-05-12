@@ -75,7 +75,7 @@ Options:
 
 --system
 --user
-	choose system-wide or per-user install. Default is system
+	choose system-wide or per-user install. Default is user
 
 --exec=NAME
 	executable name, also used as a prefix for for naming the
@@ -253,14 +253,6 @@ message "extracting $(basename "$tarball")"
 $sudo tar -xzf "$tarball" --strip-components=1 --directory "$dir" ||
 	fatal "could not extract source $tarball in $dir"
 
-((system)) && {
-	message "adjusting ownership and permitions in $dir"
-	sudo chown -R root: "$dir" ||
-		fatal "could not set owner of $dir to root"
-	sudo chmod -R g+w "$dir" ||
-		fatal "could not set permitions $dir to g+w"
-}
-
 message "creating executable at $execdir/$exec"
 $sudo mkdir -p${v} "$execdir"
 { $sudo dd of="$execdir/$exec" status=noxfer 2>/dev/null ||
@@ -304,6 +296,7 @@ $sudo mkdir -p${v} "$execdir"
 	    -Dsmartgit.vm-xmx=\${SMARTGIT_MAX_HEAP_SIZE} -Dmain-class=SmartGit \\
 	    -jar "$dir/lib/bootloader.jar" "\$@"
 EXEC
+((system)) && sudo chmod +x "$execdir/$exec"
 
 message "installing icons"
 for icon in "$dir"/bin/*.png ; do
