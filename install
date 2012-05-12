@@ -141,75 +141,51 @@ fi
 ((verbose)) && v=v
 
 dir=${prefix}/${exec}
+config=.config/${exec}
 
-# Desisntalacao ---------------------------------------------
+# Uninsntall  ---------------------------------------------
 
 ((uninstall)) && {
-	local irpf
-	for folder in "$rootdir"/IRPF*; do
-		irpf="$(basename "$folder")"
 
-		# Desinstala atalhos
-		xdg-desktop-menu uninstall --noupdate \
-		RFB-${irpf,,}_program.desktop		 \
-		RFB-${irpf,,}_help.desktop			\
-		RFB-${irpf,,}_leiame.desktop
-
-		# Desinstala icones
-		xdg-icon-resource uninstall --noupdate --size 32 "RFB-${irpf}"
-
-		# Remove o diretorio
-		rm -rf "${rootdir}/${irpf}"
-
-		echo "${irpf} desinstalado"
-	done
-
-	# Receitanet - atalhos
-	xdg-desktop-menu uninstall --noupdate  \
-	RFB-receitanet.desktop				 \
-	RFB-receitanet-ajuda.desktop
-
-	# Receitanet - icones
-	xdg-icon-resource uninstall --noupdate --size 32 RFB-receitanet
-	xdg-icon-resource uninstall --noupdate --size 32 RFB-ajuda
-
-	# Receitanet - diretorio
-	rm -rf "${rootdir}/Receitanet"
-
-	echo "Receitanet desinstalado"
-
-	# Icone principal
-	xdg-icon-resource uninstall --noupdate --size 32 RFB.png RFB-menu
-
-	# Diretorio raiz
-	rm -rf "${rootdir}"
-
-	xdg-icon-resource forceupdate
-	xdg-desktop-menu forceupdate
-
-	exit
-
-	read -r -p "Remove any previously ${label}-installed Eclipse? (yes,NO): " confirm
+	msg="Are you sure you want to remove ${exec} ${label} install?"
+	read -r -p "$msg (yes,NO): " confirm
 	case "$confirm" in
 	[Yy]*)
-		message "removing cruft from all other Eclipse $label installs"
-		if (( system )); then
-			#sudo apt-get purge eclipse
-			sudo rm -rf {/opt,/usr/local{/bin,/share{/applications,/icons/hicolor/48x48/apps,/man/man1}}}/eclipse*
-		else
-			rm -rf "$HOME"/.local{/opt,/bin,/share{/applications,/icons/hicolor/48x48/apps}}/eclipse*
-		fi
-		[[ -d "$HOME"/.eclipse ]] && {
-			read -r -p "Remove personal settings in ~/.eclipse? They won't be needed anymore. (yes,NO): " confirm
+		message "removing desktop file"
+		$sudo rm -rf "$appdir/$exec.desktop"
+		$sudo update-desktop-database "$appdir"
+
+		message "removing icons"
+		for icon in "$dir"/bin/*.png ; do
+			size=${icon##*-}
+			size=${size%%.*}
+			$sudo xdg-icon-resource uninstall --noupdate \
+				--size "$size" "$exec" 2>/dev/null
+		done
+		$sudo xdg-icon-resource forceupdate
+
+		message "removing executable"
+		$sudo rm -rf "$execdir/$exec"
+
+		message "removing install dir"
+		$sudo rm -rf "$dir"
+
+		[[ -d "$HOME/$config" ]] && {
+			msg="Remove personal settings in $HOME/$config ?"
+			read -r -p "$msg (yes,NO): " confirm
 			case "$confirm" in
 			[Yy]*)
-				message "removing ~/.eclipse"
-				rm -rf "$HOME"/.eclipse
+				message "removing $HOME/$config"
+				rm -rf "$HOME/$config"
 			;;
 			esac
 		}
+
+		message "Successfully uninstalled $name"
 	;;
 	esac
+
+	exit
 }
 
 # ---------------------------------------------------------------
@@ -273,20 +249,16 @@ dir=${prefix}/${exec}
 $sudo mkdir -p${v} "$dir" ||
 	fatal "could not create install dir $dir"
 
-message "extracting $(basename "$tarball") to $dir"
+message "extracting $(basename "$tarball")"
 $sudo tar -xzf "$tarball" --strip-components=1 --directory "$dir" ||
 	fatal "could not extract source $tarball in $dir"
 
 ((system)) && {
 	message "adjusting ownership and permitions in $dir"
-	sudo chown -R "${owner}:" "$dir" ||
-		fatal "could not set owner of $dir to $owner"
+	sudo chown -R root: "$dir" ||
+		fatal "could not set owner of $dir to root"
 	sudo chmod -R g+w "$dir" ||
 		fatal "could not set permitions $dir to g+w"
-
-	message "including your user $USER to $owner group"
-	sudo usermod --append --groups "$owner" "$USER" ||
-		fatal "could not add $USER user to $owner group"
 }
 
 message "creating executable at $execdir/$exec"
@@ -321,17 +293,17 @@ $sudo mkdir -p${v} "$execdir"
 	\$_JAVA_EXEC -XX:-UseSSE42Intrinsics -version >/dev/null 2>&1 &&
 	    _VM_PROPERTIES="\${_VM_PROPERTIES} -XX:-UseSSE42Intrinsics"
 
-	# Uncomment the following line to change the location where $name should
-	# store settings to the installation directory, making $name portable.
-	# Otherwise it will save settings at ~/.smartgit
+	# Swap the comments on the following lines to change the location where
+	# $name store settings. The first is the installation directory, making
+	# $name portable. The second is the recommended settings directory.
+	# If both are commented, it will save settings at ~/.smartgit
 	#_VM_PROPERTIES+=" -Dsmartgit.settings=\\\${smartgit.installation}/settings"
+	_VM_PROPERTIES+=" -Dsmartgit.settings=\$HOME/$config"
 
 	\$_JAVA_EXEC \$_VM_PROPERTIES -Xmx\${SMARTGIT_MAX_HEAP_SIZE} \\
 	    -Dsmartgit.vm-xmx=\${SMARTGIT_MAX_HEAP_SIZE} -Dmain-class=SmartGit \\
 	    -jar "$dir/lib/bootloader.jar" "\$@"
 EXEC
-# Make smartgit portable for user installs
-((system)) || sed -i "/^#_VM_PROPERTIES/s/^#//" "$execdir/$exec"
 
 message "installing icons"
 for icon in "$dir"/bin/*.png ; do
