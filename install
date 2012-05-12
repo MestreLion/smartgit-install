@@ -1,0 +1,395 @@
+#!/bin/bash
+#
+# install - an installer for Smartgit archives in Debian/Ubuntu/Mint
+#
+#	Copyright (C) 2012 Rodrigo Silva (MestreLion) <linux@rodrigosilva.com>
+#
+#	This program is free software: you can redistribute it and/or modify
+#	it under the terms of the GNU General Public License as published by
+#	the Free Software Foundation, either version 3 of the License, or
+#	(at your option) any later version.
+#
+#	This program is distributed in the hope that it will be useful,
+#	but WITHOUT ANY WARRANTY; without even the implied warranty of
+#	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#	GNU General Public License for more details.
+#
+#	You should have received a copy of the GNU General Public License
+#	along with this program. If not see <http://www.gnu.org/licenses/gpl.html>
+
+# ---------------------------------------------------------------
+# User-modifiable stuff...
+
+# App name in menus, Launchers, etc (inside .desktop file)
+name=SmartGit
+
+# executable (also affects dir, icon and .desktop file names)
+exec=smartgit
+
+# install prefix for system-wide install
+sysprefix=/opt
+
+# install prefix for user install
+userprefix=$HOME/.local/opt
+
+# install type: 1 for system-wide, 0 for user
+system=0
+
+# user (and group) name to own install dir and files in system-wide installs
+url=http://www.syntevo.com/smartgit/download.html
+owner=smartgit # there's no point in changing this...
+
+# leave these ones alone
+logout=0 # may be set to 1 if some install actions require logout
+verbose=1
+uninstall=0
+
+# ---------------------------------------------------------------
+# Boring UI stuff...
+
+myname="${0##*/}"
+mydir=$(dirname "$(readlink -f "$0")")
+
+fatal()   { [[ "$1" ]] && echo "$myname: error: $1" >&2 ; exit ${2:-1} ; }
+invalid() { echo "$myname: invalid option: $1" >&2 ; usage 1 ; }
+missing() { echo "$myname: missing ${1:+$1 }operand" >&2 ; usage 1 ; }
+message() { ((verbose)) && echo "$1" ; }
+quit()	{ message "Goodbye!" ; exit; }
+
+usage() {
+	cat <<- USAGE
+	Usage: $myname [options] [--|--tarball FILE]
+	USAGE
+	if [[ "$1" ]] ; then
+		cat >&2 <<- USAGE
+		Try '$myname --help' for more information.
+		USAGE
+		exit 1
+	fi
+	cat <<USAGE
+
+An installer for ${name}'s tarballs in Debian/Ubuntu/Mint
+
+Options:
+-h|--help	 - show this page.
+-v|--verbose  - print more details about what is being done.
+
+--system
+--user
+	choose system-wide or per-user install. Default is system
+
+--exec=NAME
+	executable name, also used as a prefix for for naming the
+	install directory, icon and .desktop files. Default "$exec"
+
+--prefix=DIR
+	parent of the install directory. Default is "$sysprefix"
+
+--name=NAME
+	friendly application name, for menu entries. Default "$name"
+
+--tarball FILE
+	the tar.gz install archive downloaded from ${name}'s website.
+	If none is provided, a menu will show currently downloaded files.
+
+Copyright (C) 2012 Rodrigo Silva (MestreLion) <linux@rodrigosilva.com>
+License: GPLv3 or later. See <http://www.gnu.org/licenses/gpl.html>
+USAGE
+	exit 0
+}
+
+for arg in "$@"; do case "$arg" in -h|--help) usage ;; esac; done
+while (( $# )); do
+	case "$1" in
+	-h|--help   ) usage                ;;
+	-v|--verbose) verbose=1            ;;
+	--name=*    ) name="${1#*=}"       ;;
+	--exec=*    ) exec="${1#*=}"       ;;
+	--prefix=*  ) prefix="${1#*=}"     ;;
+	--tarball=* ) tarball="${1#*=}"    ;;
+	--icon=*    ) argicon="${1#*=}"
+	              usericon=1           ;;
+	--name      ) shift ; name="$1"    ;;
+	--exec      ) shift ; exec="$1"    ;;
+	--prefix    ) shift ; prefix="$1"  ;;
+	--tarball   ) shift ; tarball="$1" ;;
+	--icon      ) shift ; argicon="$1"
+	              usericon=1           ;;
+	--system    ) system=1             ;;
+	--user      ) system=0             ;;
+	--uninstall ) uninstall=1          ;;
+	--          ) shift ; tarball="$1"
+	              break                ;;
+	*           ) invalid "$1" ; shift
+	              break                ;;
+	esac
+	shift
+done
+
+[[ "$name" ]] || missing "name"
+[[ "$exec" ]] || missing "exec"
+
+if (( system )) ; then
+	[[ "$prefix" ]] || prefix=$sysprefix
+	execdir=/usr/local/bin
+	appdir=/usr/local/share/applications
+	sudo=sudo
+	label="system"
+else
+	[[ "$prefix" ]] || prefix=$userprefix
+	execdir=$HOME/.local/bin
+	appdir=$HOME/.local/share/applications
+	sudo=env
+	label="user"
+fi
+
+((verbose)) && v=v
+
+dir=${prefix}/${exec}
+
+# Desisntalacao ---------------------------------------------
+
+((uninstall)) && {
+	local irpf
+	for folder in "$rootdir"/IRPF*; do
+		irpf="$(basename "$folder")"
+
+		# Desinstala atalhos
+		xdg-desktop-menu uninstall --noupdate \
+		RFB-${irpf,,}_program.desktop		 \
+		RFB-${irpf,,}_help.desktop			\
+		RFB-${irpf,,}_leiame.desktop
+
+		# Desinstala icones
+		xdg-icon-resource uninstall --noupdate --size 32 "RFB-${irpf}"
+
+		# Remove o diretorio
+		rm -rf "${rootdir}/${irpf}"
+
+		echo "${irpf} desinstalado"
+	done
+
+	# Receitanet - atalhos
+	xdg-desktop-menu uninstall --noupdate  \
+	RFB-receitanet.desktop				 \
+	RFB-receitanet-ajuda.desktop
+
+	# Receitanet - icones
+	xdg-icon-resource uninstall --noupdate --size 32 RFB-receitanet
+	xdg-icon-resource uninstall --noupdate --size 32 RFB-ajuda
+
+	# Receitanet - diretorio
+	rm -rf "${rootdir}/Receitanet"
+
+	echo "Receitanet desinstalado"
+
+	# Icone principal
+	xdg-icon-resource uninstall --noupdate --size 32 RFB.png RFB-menu
+
+	# Diretorio raiz
+	rm -rf "${rootdir}"
+
+	xdg-icon-resource forceupdate
+	xdg-desktop-menu forceupdate
+
+	exit
+
+	read -r -p "Remove any previously ${label}-installed Eclipse? (yes,NO): " confirm
+	case "$confirm" in
+	[Yy]*)
+		message "removing cruft from all other Eclipse $label installs"
+		if (( system )); then
+			#sudo apt-get purge eclipse
+			sudo rm -rf {/opt,/usr/local{/bin,/share{/applications,/icons/hicolor/48x48/apps,/man/man1}}}/eclipse*
+		else
+			rm -rf "$HOME"/.local{/opt,/bin,/share{/applications,/icons/hicolor/48x48/apps}}/eclipse*
+		fi
+		[[ -d "$HOME"/.eclipse ]] && {
+			read -r -p "Remove personal settings in ~/.eclipse? They won't be needed anymore. (yes,NO): " confirm
+			case "$confirm" in
+			[Yy]*)
+				message "removing ~/.eclipse"
+				rm -rf "$HOME"/.eclipse
+			;;
+			esac
+		}
+	;;
+	esac
+}
+
+# ---------------------------------------------------------------
+# Installer begins here (but still boring)
+
+((verbose)) && printf "\n${name^^} INSTALLER\n\n"
+
+[[ "$tarball" ]] || {
+
+	cd "$mydir"
+	options=( *.tar.gz "Download more at $url" )
+
+	message "Available installs:"
+	PS3="Choose an install (0 to quit): "
+
+	select tarball in "${options[@]}"; do
+		((REPLY==${#options[@]})) && {
+			message "Opening your web browser..." ;
+			message "Choose your ${name} archive, download and save to"
+			message "$mydir"
+			message "... and run me again"
+			xdg-open "$url"
+			REPLY=0
+		}
+		((REPLY==0)) && quit
+		[[ "$tarball" ]] && break
+	done
+	echo ""
+	tarball="${mydir}/${tarball}"
+	cd - >/dev/null
+}
+
+((verbose)) && {
+	echo "Install details:"
+	echo "Install Type = $label"
+	echo "App name     = $name"
+	echo "Executable   = $exec"
+	echo "Install dir  = $dir"
+	echo "Source       = $(basename "$tarball")"
+	echo "To change these options, see $myname --help"
+	read -r -p "Confirm? (YES,no): " confirm
+	case "$confirm" in
+	[Nn]*) quit
+	esac
+	echo ""
+}
+
+[[ -e "$dir" ]] && {
+	read -r -p "Install directory $dir already exists."\
+				" Delete it before proceding? (yes,NO): " confirm
+	case "$confirm" in
+	[Yy]*) message "removing $dir" ;
+		   $sudo rm -rf "$dir" || fatal "could not remove $dir" ;;
+		*) quit
+	esac
+}
+
+# ---------------------------------------------
+# Now the fun begins
+
+{ ((system)) && ! id "$owner" > /dev/null 2>&1 ; } && {
+	message "creating $owner user and group"
+	sudo useradd --system "$owner" ||
+		fatal "could not create user $owner"
+}
+
+$sudo mkdir -p${v} "$dir" ||
+	fatal "could not create install dir $dir"
+
+message "extracting $(basename "$tarball") to $dir"
+$sudo tar -xzf "$tarball" --strip-components=1 --directory "$dir" ||
+	fatal "could not extract source $tarball in $dir"
+
+((system)) && {
+	message "adjusting ownership and permitions in $dir"
+	sudo chown -R "${owner}:" "$dir"
+		|| fatal "could not set owner of $dir to $owner"
+	sudo chmod -R g+w "$dir"
+		|| fatal "could not set permitions $dir to g+w"
+
+	message "including your user $USER to $owner group"
+	sudo usermod --append --groups "$owner" "$USER"
+		|| fatal "could not add $USER user to $owner group"
+}
+
+message "creating executable at $execdir/$exec"
+$sudo mkdir -p${v} "$execdir"
+{ $sudo dd of="$execdir/$exec" status=noxfer 2>/dev/null ||
+  fatal "could not create $execdir/$exec executable" ; } <<-EXEC
+	#!/bin/bash
+	#
+	# Normally, editing this script should not be required.
+	#
+	# To specify an alternative Java Runtime Environment,
+	# uncomment and edit next line
+	#SMARTGIT_JAVA_HOME=/path/to/java
+	SMARTGIT_JAVA_HOME=\${SMARTGIT_JAVA_HOME:-\$JAVA_HOME}
+	SMARTGIT_MAX_HEAP_SIZE=\${SMARTGIT_MAX_HEAP_SIZE:-256m}
+
+	if [[ "\$SMARTGIT_JAVA_HOME" ]] ; then
+		_JAVA_EXEC="\$SMARTGIT_JAVA_HOME/bin/java"
+	else
+		_JAVA_EXEC="java"
+	fi
+
+	type -p "\$_JAVA_EXEC" >/dev/null || {
+		echo "Error: No java environment found"
+		exit 1
+	}
+
+	_VM_PROPERTIES="-Dsun.io.useCanonCaches=false"
+
+	# -XX:-UseSSE42Intrinsics is used to work-around bug 6875866
+	# of Java 1.6.0_20 (and earlier) on Intel Nehalem CPUs, e.g. Core i7
+	\$_JAVA_EXEC -XX:-UseSSE42Intrinsics -version >/dev/null 2>&1 &&
+		_VM_PROPERTIES="\${_VM_PROPERTIES} -XX:-UseSSE42Intrinsics"
+
+	# Uncomment the following line to change the location where $name should
+	# store settings (the given example path will make $name portable by
+	# storing the settings in the installation directory):
+	#_VM_PROPERTIES+=" -Dsmartgit.settings=\\${smartgit.installation}/.smartgit"
+
+	\$_JAVA_EXEC \$_VM_PROPERTIES -Xmx\${SMARTGIT_MAX_HEAP_SIZE} \
+		-Dsmartgit.vm-xmx=\${SMARTGIT_MAX_HEAP_SIZE} -Dmain-class=SmartGit \
+		-jar "$dir/lib/bootloader.jar" "\$@"
+EXEC
+
+message "installing icons"
+for icon in "$dir"/bin/*.png
+	size=${icon##*-}
+	size=${size%%.*}
+	echo "icon=$icon, size=$size"
+	$sudo xdg-icon-resource install --noupdate --size "$size" "$icon" "$exec"
+done
+$sudo xdg-icon-resource forceupdate || fatal "could not install icons"
+
+message "installing desktop file"
+$sudo mkdir -p${v} "$appdir"
+	|| fatal "could not create desktop directory $appdir"
+{ $sudo dd of="$appdir/$exec.desktop" status=noxfer 2>/dev/null ||
+  fatal "could not desktop entry $appdir/$exec.desktop" ; } <<-DESKTOP
+	[Desktop Entry]
+	Version=1.0
+	Type=Application
+	Name=$name
+	GenericName=Git+Hg+SVN Client
+	Categories=Development;RevisionControl;
+	StartupNotify=true
+	Icon=$exec
+	Exec=$exec
+	Terminal=false
+	MimeType=x-directory/normal
+DESKTOP
+
+((system)) || (
+	IFS=:
+	for pathdir in $PATH ; do
+		[[ "$pathdir" = "$execdir" ]] && return
+	done
+
+	relexecdir=${execdir#$HOME/}
+	message "adding ~/${relexecdir} to you \$PATH in ~/.profile"
+	cat >> "$HOME/.profile" <<-EOF
+
+	# Included by $name $label install
+	# set PATH so it includes user's ~/${relexecdir} if it exists
+	if [ -d "\$HOME/$relexecdir" ] ; then
+		PATH="\$HOME/$relexecdir:\$PATH"
+	fi
+	EOF
+)
+
+message "Removing install cruft files"
+$sudo rm -rf "${dir}"
+
+message ""
+message "Succesfully installed ${name}!"
+((logout)) && echo "Log out for changes to apply..."
