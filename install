@@ -18,7 +18,7 @@
 #	along with this program. If not see <http://www.gnu.org/licenses/gpl.html>
 
 # ---------------------------------------------------------------
-# User-modifiable stuff...
+# User-modifiable stuff... most can be changed via command-line options
 
 # App name in menus, Launchers, etc (inside .desktop file)
 name=SmartGit
@@ -91,6 +91,10 @@ Options:
 	the tar.gz install archive downloaded from ${name}'s website.
 	If none is provided, a menu will show currently downloaded files.
 
+--uninstall
+	Uninstall ${name}. Combine with --system, --exec and --prefix to
+	uninstall from a custom install
+
 Copyright (C) 2012 Rodrigo Silva (MestreLion) <linux@rodrigosilva.com>
 License: GPLv3 or later. See <http://www.gnu.org/licenses/gpl.html>
 USAGE
@@ -142,6 +146,9 @@ fi
 
 dir=${prefix}/${exec}
 config=.config/${exec}
+execfile=${dir}/bin/${exec}
+deskdir=${dir}/desktop
+deskfile=${deskdir}/${exec}.desktop
 
 # Uninsntall  ---------------------------------------------
 
@@ -253,10 +260,14 @@ message "extracting $(basename "$tarball")"
 $sudo tar -xzf "$tarball" --strip-components=1 --directory "$dir" ||
 	fatal "could not extract source $tarball in $dir"
 
-message "creating executable at $execdir/$exec"
-$sudo mkdir -p${v} "$execdir"
-{ $sudo dd of="$execdir/$exec" status=noxfer 2>/dev/null ||
-  fatal "could not create $execdir/$exec executable" ; } <<-EXEC
+message "adjusting install files and structure"
+$sudo mkdir "$deskdir"
+$sudo mv "$dir"/bin/*.png "$deskdir" # /bin is for executables, not icons
+$sudo rm -rf "$dir"/bin/*.{svg,sh}   # their svg is a png, and all .sh sucks
+
+message "creating executable $execfile"
+{ $sudo dd of="$execfile" status=noxfer 2>/dev/null ||
+  fatal "could not create $execfile executable" ; } <<-EXEC
 	#!/bin/bash
 	#
 	# Normally, editing this script should not be required.
@@ -296,10 +307,13 @@ $sudo mkdir -p${v} "$execdir"
 	    -Dsmartgit.vm-xmx=\${SMARTGIT_MAX_HEAP_SIZE} -Dmain-class=SmartGit \\
 	    -jar "$dir/lib/bootloader.jar" "\$@"
 EXEC
-((system)) && sudo chmod +x "$execdir/$exec"
+$sudo chmod +x "$execfile"
+message "symlinking executable to $execdir/$exec"
+$sudo mkdir -p${v} "$execdir"
+$sudo ln -s "$execfile" "$execdir/$exec"
 
 message "installing icons"
-for icon in "$dir"/bin/*.png ; do
+for icon in "$deskdir"/*.png ; do
 	size=${icon##*-}
 	size=${size%%.*}
 	$sudo xdg-icon-resource install --noupdate --novendor --size "$size" \
@@ -307,11 +321,9 @@ for icon in "$dir"/bin/*.png ; do
 done
 $sudo xdg-icon-resource forceupdate || fatal "could not install icons"
 
-message "installing desktop file"
-$sudo mkdir -p${v} "$appdir" ||
-	fatal "could not create desktop directory $appdir"
-{ $sudo dd of="$appdir/$exec.desktop" status=noxfer 2>/dev/null ||
-  fatal "could not desktop entry $appdir/$exec.desktop" ; } <<-DESKTOP
+message "creating desktop file"
+{ $sudo dd of="$deskfile" status=noxfer 2>/dev/null ||
+  fatal "could not create desktop entry $deskfile" ; } <<-DESKTOP
 	[Desktop Entry]
 	Version=1.0
 	Type=Application
@@ -325,7 +337,26 @@ $sudo mkdir -p${v} "$appdir" ||
 	Terminal=false
 	MimeType=inode/directory
 DESKTOP
+message "installing desktop file"
+$sudo mkdir -p${v} "$appdir" ||
+	fatal "could not create desktop directory $appdir"
+$sudo cp "$deskfile" "$appdir" ||
+	fatal "could not install desktop file to $appdir"
 $sudo update-desktop-database "$appdir"
+
+
+message "copying install and uninstall scripts"
+$sudo cp "$mydir/$myname" "$dir/bin"
+$sudo cp "$mydir/$myname" "$dir/bin/uninstall"
+$sudo sed -i "/^uninstall=/s/0/1/;/^system=/s/[01]/$system/" "$dir/bin/uninstall"
+
+message "adjusting ownership and permitions in $dir"
+((system)) && {
+	sudo chown -R root: "$dir" ||
+		fatal "could not set owner of $dir to root"
+}
+$sudo chmod +x "$dir"/bin/* ||
+	fatal "could not set permitions in $dir/bin"
 
 ((system)) || {
 	addpath=1
