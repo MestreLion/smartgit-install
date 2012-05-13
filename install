@@ -57,7 +57,7 @@ quit()	{ message "Goodbye!" ; exit; }
 
 usage() {
 	cat <<- USAGE
-	Usage: $myname [options] [--|--tarball FILE]
+	Usage: $myname [options] [[--tarball] FILE]
 	USAGE
 	if [[ "$1" ]] ; then
 		cat >&2 <<- USAGE
@@ -68,6 +68,8 @@ usage() {
 	cat <<USAGE
 
 An installer for ${name}'s tarballs in Debian/Ubuntu/Mint
+
+Includes uninstall script. Tested with v3.0.4
 
 Options:
 -h|--help  - show this page.
@@ -150,7 +152,7 @@ execfile=${dir}/bin/${exec}
 deskdir=${dir}/desktop
 deskfile=${deskdir}/${exec}.desktop
 
-# Uninsntall  ---------------------------------------------
+# Uninstall  ---------------------------------------------
 
 ((uninstall)) && {
 
@@ -345,7 +347,7 @@ $sudo cp "$deskfile" "$appdir" ||
 $sudo update-desktop-database "$appdir"
 
 
-message "copying install and uninstall scripts"
+message "copying install and uninstall scripts to $dir/bin"
 $sudo cp "$mydir/$myname" "$dir/bin"
 $sudo cp "$mydir/$myname" "$dir/bin/uninstall"
 $sudo sed -i "/^uninstall=/s/0/1/;/^system=/s/[01]/$system/" "$dir/bin/uninstall"
