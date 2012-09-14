@@ -205,7 +205,9 @@ deskfile=${deskdir}/${exec}.desktop
 [[ "$tarball" ]] || {
 
 	cd "$mydir"
+	shopt -s nullglob
 	options=( *.tar.gz "Download more at $url" )
+	shopt -u nullglob
 
 	message "Available installs:"
 	PS3="Choose an install (0 to quit): "
